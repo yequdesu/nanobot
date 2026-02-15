@@ -17,6 +17,7 @@ You have access to:
 - Web access (search, fetch)
 - Messaging (message)
 - Background tasks (spawn)
+- Configuration display (show_prompt, show_soul, show_identity, show_agents)
 
 ## Memory
 
@@ -32,6 +33,17 @@ nanobot cron add --name "reminder" --message "Your message" --at "YYYY-MM-DDTHH:
 Get USER_ID and CHANNEL from the current session (e.g., `8281248569` and `telegram` from `telegram:8281248569`).
 
 **Do NOT just write reminders to MEMORY.md** — that won't trigger actual notifications.
+
+## Configuration Display Tools
+
+When the user wants to view configuration files or system prompt, use these tools:
+
+- `show_prompt` — Display the current system prompt being used (includes identity, skills, memory)
+- `show_soul` — Display the SOUL.md file (personality and values definition)
+- `show_identity` — Display the IDENTITY.md file (core identity and capabilities)
+- `show_agents` — Display the AGENTS.md file (instructions and guidelines)
+
+These tools help users understand how you are configured and what information guides your responses.
 
 ## Heartbeat Tasks
 
