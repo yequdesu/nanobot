@@ -74,12 +74,30 @@ Skills with available="false" need dependencies installed first - you can try in
         """Get the core identity section."""
         from datetime import datetime
         import time as _time
+        from loguru import logger
+        
+        # generate dynamic variables
         now = datetime.now().strftime("%Y-%m-%d %H:%M (%A)")
         tz = _time.strftime("%Z") or "UTC"
         workspace_path = str(self.workspace.expanduser().resolve())
         system = platform.system()
         runtime = f"{'macOS' if system == 'Darwin' else system} {platform.machine()}, Python {platform.python_version()}"
         
+        # try to load IDENTITY.md file
+        identity_file = self.workspace / "IDENTITY.md"
+        if identity_file.exists():
+            try:
+                content = identity_file.read_text(encoding="utf-8")
+                # replace variables
+                content = content.replace("{now}", now)
+                content = content.replace("{tz}", tz)
+                content = content.replace("{runtime}", runtime)
+                content = content.replace("{workspace_path}", workspace_path)
+                return content
+            except Exception as e:
+                logger.warning(f"Failed to load IDENTITY.md: {e}, using default identity")
+        
+        # default identity
         return f"""# nanobot 🐈
 
 You are nanobot, a helpful AI assistant. You have access to tools that allow you to:
@@ -108,6 +126,7 @@ For normal conversation, just respond with text - do not call the message tool.
 Always be helpful, accurate, and concise. When using tools, think step by step: what you know, what you need, and why you chose this tool.
 When remembering something important, write to {workspace_path}/memory/MEMORY.md
 To recall past events, grep {workspace_path}/memory/HISTORY.md"""
+
     
     def _load_bootstrap_files(self) -> str:
         """Load all bootstrap files from workspace."""
