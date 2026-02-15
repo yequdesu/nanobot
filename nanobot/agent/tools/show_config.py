@@ -11,6 +11,11 @@ class ShowPromptTool(BaseTool):
     
     name = "show_prompt"
     description = "Show the current system prompt being used by the agent. Returns the complete system prompt including identity, skills, and memory context."
+    parameters = {
+        "type": "object",
+        "properties": {},
+        "required": []
+    }
     
     def __init__(self, context_builder: Any = None):
         self.context_builder = context_builder
@@ -42,6 +47,11 @@ class ShowSoulTool(BaseTool):
     
     name = "show_soul"
     description = "Show the content of SOUL.md file from the workspace. This file defines the agent's personality and values."
+    parameters = {
+        "type": "object",
+        "properties": {},
+        "required": []
+    }
     
     def __init__(self, workspace: Path = None):
         self.workspace = workspace
@@ -69,6 +79,11 @@ class ShowIdentityTool(BaseTool):
     
     name = "show_identity"
     description = "Show the content of IDENTITY.md file from the workspace. This file defines the agent's core identity and capabilities."
+    parameters = {
+        "type": "object",
+        "properties": {},
+        "required": []
+    }
     
     def __init__(self, workspace: Path = None):
         self.workspace = workspace
@@ -96,6 +111,11 @@ class ShowAgentsTool(BaseTool):
     
     name = "show_agents"
     description = "Show the content of AGENTS.md file from the workspace. This file contains agent instructions and guidelines."
+    parameters = {
+        "type": "object",
+        "properties": {},
+        "required": []
+    }
     
     def __init__(self, workspace: Path = None):
         self.workspace = workspace
