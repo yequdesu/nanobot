@@ -23,6 +23,19 @@ fi
 docker stop "$CONTAINER_NAME" 2>/dev/null || true
 docker rm "$CONTAINER_NAME" 2>/dev/null || true
 
+# build nanobot image (only if not exists)
+if ! docker images | grep -q "^nanobot "; then
+  echo "building nanobot image..."
+  docker build -t nanobot .
+
+  if [ $? -ne 0 ]; then
+    echo "error: docker build failed"
+    exit 1
+  fi
+else
+  echo "nanobot image already exists"
+fi
+
 # remove old data directory
 if [ -e "$DATA_DIR" ]; then
   echo "cleaning old data directory..."
@@ -69,9 +82,11 @@ if [ -f "$PROJECT_DIR/config/config.json" ]; then
 fi
 
 # start nanobot gateway with napcat websocket port exposed
+# mount source code for live updates without rebuild
 docker run -d --name "$CONTAINER_NAME" \
   -p 18790:18790 \
   -v "$(pwd)/$DATA_DIR:/root/.nanobot" \
+  -v "$(pwd)/nanobot:/app/nanobot:ro" \
   nanobot gateway
 
 # check gateway start success
@@ -79,11 +94,7 @@ if [ $? -eq 0 ]; then
   echo "nanobot gateway started successfully!"
   echo "container name: $CONTAINER_NAME"
   echo "napcat websocket: ws://<server-ip>:18790"
-  echo ""
-  echo "napcat configuration guide:"
-  echo "  1. set reverse websocket url: ws://<server-ip>:18790"
-  echo "  2. set access token to match config.json"
-  echo "  3. restart napcat to connect"
+
 else
   echo "warn: nanobot gateway start failed"
   exit 1
