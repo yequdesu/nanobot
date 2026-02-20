@@ -1,7 +1,6 @@
 #!/bin/bash
 
 # docker-runner.sh - Build and run nanobot container for cloud deployment
-# This script is designed for server deployment via git pull
 
 # define variables
 CONTAINER_NAME="nanobot-dev"
@@ -37,6 +36,17 @@ sudo mkdir -p "$DATA_DIR/workspace"
 sudo mkdir -p "$DATA_DIR/memory"
 echo "created data directory structure"
 
+# onboard nanobot to generate default config
+docker run --rm --name "$CONTAINER_NAME" \
+  -v "$(pwd)/$DATA_DIR:/root/.nanobot" \
+  nanobot onboard
+
+# check onboard success
+if [ $? -ne 0 ]; then
+  echo "warn: nanobot onboard failed"
+  exit 1
+fi
+
 # copy workspace files with sudo
 if [ -d "$PROJECT_DIR/workspace" ]; then
   sudo cp -r "$PROJECT_DIR/workspace/"* "$DATA_DIR/workspace/" 2>/dev/null || true
@@ -45,6 +55,7 @@ fi
 
 # copy userskills with sudo
 if [ -d "$PROJECT_DIR/userskills" ]; then
+  sudo mkdir -p "$DATA_DIR/workspace/skills"
   sudo cp -r "$PROJECT_DIR/userskills/"* "$DATA_DIR/workspace/skills/"
   echo "userskills copied"
 else
@@ -55,19 +66,6 @@ fi
 if [ -f "$PROJECT_DIR/config/config.json" ]; then
   sudo cp "$PROJECT_DIR/config/config.json" "$DATA_DIR/config.json"
   echo "config file copied"
-else
-  echo "warn: config file not found, will generate default"
-fi
-
-# onboard nanobot to initialize
-docker run --rm --name "$CONTAINER_NAME" \
-  -v "$(pwd)/$DATA_DIR:/root/.nanobot" \
-  nanobot onboard
-
-# check onboard success
-if [ $? -ne 0 ]; then
-  echo "warn: nanobot onboard failed"
-  exit 1
 fi
 
 # start nanobot gateway with napcat websocket port exposed
