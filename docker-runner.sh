@@ -24,54 +24,50 @@ fi
 docker stop "$CONTAINER_NAME" 2>/dev/null || true
 docker rm "$CONTAINER_NAME" 2>/dev/null || true
 
-# remove corrupted data directory with sudo
+# remove old data directory
 if [ -e "$DATA_DIR" ]; then
-  echo "cleaning old data directory with sudo..."
+  echo "cleaning old data directory..."
   sudo rm -rf "$DATA_DIR"
-  if [ $? -ne 0 ]; then
-    echo "error: failed to remove $DATA_DIR. check your sudo permissions."
-    exit 1
-  fi
   echo "cleaned old data directory"
 fi
 
-# create data directory
-mkdir -p "$DATA_DIR"
-mkdir -p "$DATA_DIR/skills"
-mkdir -p "$DATA_DIR/workspace"
-mkdir -p "$DATA_DIR/memory"
+# create data directory with sudo
+sudo mkdir -p "$DATA_DIR/skills"
+sudo mkdir -p "$DATA_DIR/workspace"
+sudo mkdir -p "$DATA_DIR/memory"
+echo "created data directory structure"
 
-# copy workspace files
+# copy workspace files with sudo
 if [ -d "$PROJECT_DIR/workspace" ]; then
-  cp -r "$PROJECT_DIR/workspace/"* "$DATA_DIR/workspace/" 2>/dev/null || true
-  echo "workspace files copied to $DATA_DIR/workspace/"
+  sudo cp -r "$PROJECT_DIR/workspace/"* "$DATA_DIR/workspace/" 2>/dev/null || true
+  echo "workspace files copied"
 fi
 
-# onboard nanobot to generate default config first
+# copy userskills with sudo
+if [ -d "$PROJECT_DIR/userskills" ]; then
+  sudo cp -r "$PROJECT_DIR/userskills/"* "$DATA_DIR/workspace/skills/"
+  echo "userskills copied"
+else
+  echo "warn: userskills directory not found"
+fi
+
+# copy custom config.json with sudo
+if [ -f "$PROJECT_DIR/config/config.json" ]; then
+  sudo cp "$PROJECT_DIR/config/config.json" "$DATA_DIR/config.json"
+  echo "config file copied"
+else
+  echo "warn: config file not found, will generate default"
+fi
+
+# onboard nanobot to initialize
 docker run --rm --name "$CONTAINER_NAME" \
   -v "$(pwd)/$DATA_DIR:/root/.nanobot" \
   nanobot onboard
 
 # check onboard success
 if [ $? -ne 0 ]; then
-  echo "warn: nanobot onboard failed, please check error message"
+  echo "warn: nanobot onboard failed"
   exit 1
-fi
-
-# copy userskills
-if [ -d "$PROJECT_DIR/userskills" ]; then
-  cp -r "$PROJECT_DIR/userskills/"* "$DATA_DIR/workspace/skills/"
-  echo "userskills copied to $DATA_DIR/workspace/skills/"
-else
-  echo "warn: userskills directory not found"
-fi
-
-# copy custom config.json to overwrite default config
-if [ -f "$PROJECT_DIR/config/config.json" ]; then
-  cp "$PROJECT_DIR/config/config.json" "$DATA_DIR/config.json"
-  echo "config file copied to $DATA_DIR/config.json"
-else
-  echo "warn: config file not found, use default config"
 fi
 
 # start nanobot gateway with napcat websocket port exposed
@@ -91,6 +87,6 @@ if [ $? -eq 0 ]; then
   echo "  2. set access token to match config.json"
   echo "  3. restart napcat to connect"
 else
-  echo "warn: nanobot gateway start failed, please check error message"
+  echo "warn: nanobot gateway start failed"
   exit 1
 fi
