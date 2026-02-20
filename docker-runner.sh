@@ -43,7 +43,7 @@ mkdir -p "$DATA_DIR/memory"
 
 # copy workspace files
 if [ -d "$PROJECT_DIR/workspace" ]; then
-  sudo cp -r "$PROJECT_DIR/workspace/"* "$DATA_DIR/workspace/" 2>/dev/null || true
+  cp -r "$PROJECT_DIR/workspace/"* "$DATA_DIR/workspace/" 2>/dev/null || true
   echo "workspace files copied to $DATA_DIR/workspace/"
 fi
 
@@ -60,7 +60,7 @@ fi
 
 # copy userskills
 if [ -d "$PROJECT_DIR/userskills" ]; then
-  sudocp -r "$PROJECT_DIR/userskills/"* "$DATA_DIR/workspace/skills/"
+  cp -r "$PROJECT_DIR/userskills/"* "$DATA_DIR/workspace/skills/"
   echo "userskills copied to $DATA_DIR/workspace/skills/"
 else
   echo "warn: userskills directory not found"
@@ -68,7 +68,7 @@ fi
 
 # copy custom config.json to overwrite default config
 if [ -f "$PROJECT_DIR/config/config.json" ]; then
-  sudo cp "$PROJECT_DIR/config/config.json" "$DATA_DIR/config.json"
+  cp "$PROJECT_DIR/config/config.json" "$DATA_DIR/config.json"
   echo "config file copied to $DATA_DIR/config.json"
 else
   echo "warn: config file not found, use default config"
