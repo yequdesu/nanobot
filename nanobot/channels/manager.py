@@ -136,6 +136,18 @@ class ChannelManager:
                 logger.info("QQ channel enabled")
             except ImportError as e:
                 logger.warning(f"QQ channel not available: {e}")
+        
+        # NapCat channel
+        if self.config.channels.napcat.enabled:
+            try:
+                from nanobot.channels.napcat import NapCatChannel
+                self.channels["napcat"] = NapCatChannel(
+                    self.config.channels.napcat,
+                    self.bus,
+                )
+                logger.info("NapCat channel enabled")
+            except ImportError as e:
+                logger.warning(f"NapCat channel not available: {e}")
     
     async def _start_channel(self, name: str, channel: BaseChannel) -> None:
         """Start a channel and log any exceptions."""

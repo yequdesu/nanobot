@@ -142,6 +142,26 @@ class QQConfig(BaseModel):
     allow_from: list[str] = Field(default_factory=list)  # Allowed user openids (empty = public access)
 
 
+class NapCatConfig(BaseModel):
+    """NapCat channel configuration using OneBot v11 Reverse WebSocket.
+
+    NapCat is a QQ bot framework that provides OneBot v11 protocol support.
+    This configuration uses Reverse WebSocket mode where NapCat connects
+    to nanobot's WebSocket server, enabling cloud deployment without
+    exposing NapCat to the internet.
+
+    See: https://github.com/NapNeko/NapCatQQ
+    """
+    enabled: bool = False
+
+    # WebSocket server configuration (for receiving NapCat connection)
+    host: str = "0.0.0.0"  # Host to bind WebSocket server
+    port: int = 18790  # Port to bind WebSocket server (same as gateway port)
+    access_token: str = ""  # Access token for authentication
+
+    allow_from: list[str] = Field(default_factory=list)  # Allowed QQ numbers (empty = public access)
+
+
 class ChannelsConfig(BaseModel):
     """Configuration for chat channels."""
     whatsapp: WhatsAppConfig = Field(default_factory=WhatsAppConfig)
@@ -153,6 +173,7 @@ class ChannelsConfig(BaseModel):
     email: EmailConfig = Field(default_factory=EmailConfig)
     slack: SlackConfig = Field(default_factory=SlackConfig)
     qq: QQConfig = Field(default_factory=QQConfig)
+    napcat: NapCatConfig = Field(default_factory=NapCatConfig)
 
 
 class AgentDefaults(BaseModel):

@@ -108,9 +108,16 @@
       }
     },
     "qq": {
+      "enabled": false,
+      "appId": "",
+      "secret": "",
+      "allowFrom": []
+    },
+    "napcat": {
       "enabled": true,
-      "appId": "102854770",
-      "secret": "sy4BJRajt3EPbn0EShwCSj0IatDXsDZv",
+      "host": "0.0.0.0",
+      "port": 18790,
+      "accessToken": "",
       "allowFrom": []
     }
   },
