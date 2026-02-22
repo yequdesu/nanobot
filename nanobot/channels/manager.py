@@ -28,8 +28,10 @@ class ChannelManager:
         self.bus = bus
         self.channels: dict[str, BaseChannel] = {}
         self._dispatch_task: asyncio.Task | None = None
-        
+
+        logger.info("ChannelManager initializing...")
         self._init_channels()
+        logger.info(f"ChannelManager initialized with channels: {list(self.channels.keys())}")
     
     def _init_channels(self) -> None:
         """Initialize channels based on config."""
@@ -138,6 +140,7 @@ class ChannelManager:
                 logger.warning(f"QQ channel not available: {e}")
         
         # NapCat channel
+        logger.info(f"NapCat enabled check: {self.config.channels.napcat.enabled}")
         if self.config.channels.napcat.enabled:
             try:
                 from nanobot.channels.napcat import NapCatChannel
@@ -148,6 +151,10 @@ class ChannelManager:
                 logger.info("NapCat channel enabled")
             except ImportError as e:
                 logger.warning(f"NapCat channel not available: {e}")
+            except Exception as e:
+                logger.error(f"NapCat channel initialization failed: {e}")
+        else:
+            logger.info("NapCat channel is disabled in config")
     
     async def _start_channel(self, name: str, channel: BaseChannel) -> None:
         """Start a channel and log any exceptions."""

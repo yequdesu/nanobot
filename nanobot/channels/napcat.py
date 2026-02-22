@@ -67,11 +67,11 @@ class NapCatChannel(BaseChannel):
         self._running = True
 
         # Start WebSocket server
+        # Note: subprotocols is optional to support clients that don't send it
         self._server = await websockets.serve(
             self._handle_connection,
             self.config.host,
             self.config.port,
-            subprotocols=["OneBot.v11"],
         )
 
         logger.info(

@@ -1,0 +1,12 @@
+# Dockerfile.dev - Development image with local code
+FROM nanobot:latest
+
+# Copy latest code
+COPY nanobot /app/nanobot
+
+# Set environment
+ENV PYTHONPATH=/app
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+ENTRYPOINT ["nanobot"]
