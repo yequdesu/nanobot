@@ -1,0 +1,28 @@
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+
+WORKDIR /app
+
+# Configure uv to use Tsinghua mirror for faster install in China
+ENV UV_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+ENV UV_EXTRA_INDEX_URL=https://mirrors.aliyun.com/pypi/simple
+
+# Install Python dependencies first (cached layer)
+COPY pyproject.toml README.md LICENSE ./
+RUN mkdir -p nanobot bridge && touch nanobot/__init__.py bridge/.gitkeep && \
+    uv pip install --system --no-cache . && \
+    rm -rf nanobot bridge
+
+# Copy the full source and install
+COPY nanobot/ nanobot/
+RUN mkdir -p bridge && touch bridge/.gitkeep && \
+    uv pip install --system --no-cache . && \
+    rm -rf bridge
+
+# Create config directory
+RUN mkdir -p /root/.nanobot
+
+# Gateway default port
+EXPOSE 18790
+
+ENTRYPOINT ["nanobot"]
+CMD ["status"]

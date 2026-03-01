@@ -381,9 +381,20 @@ def gateway(
         console.print(f"[green]✓[/green] Cron: {cron_status['jobs']} scheduled jobs")
     
     console.print(f"[green]✓[/green] Heartbeat: every 30m")
-    
+
+    # Initialize Nacos service registry
+    nacos_client = None
+    if config.nacos.enabled:
+        from nanobot.nacos import NacosClient
+        nacos_client = NacosClient(config.nacos, port=port)
+        console.print(f"[green]✓[/green] Nacos: {config.nacos.service_name}")
+
     async def run():
         try:
+            # Start Nacos registration
+            if nacos_client:
+                await nacos_client.start()
+
             await cron.start()
             await heartbeat.start()
             await asyncio.gather(
@@ -396,7 +407,11 @@ def gateway(
             cron.stop()
             agent.stop()
             await channels.stop_all()
-    
+
+            # Stop Nacos registration
+            if nacos_client:
+                await nacos_client.stop()
+
     asyncio.run(run())
 
 

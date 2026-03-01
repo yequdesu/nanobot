@@ -3,13 +3,17 @@
 NapCat is a QQ bot framework that provides OneBot v11 protocol support.
 This channel uses Reverse WebSocket to receive and send messages.
 The local NapCat instance connects to nanobot's WebSocket server.
+
+Supports both long connection (direct NapCat) and short connection (via MidLayer) modes.
 """
 
 import asyncio
 import json
+import uuid
 from collections import deque
 from typing import Any
 
+import aiohttp
 import websockets
 from loguru import logger
 from websockets.server import WebSocketServerProtocol
@@ -54,6 +58,8 @@ class NapCatChannel(BaseChannel):
         self._processed_ids: deque = deque(maxlen=1000)
         self._heartbeat_task: asyncio.Task | None = None
         self._send_lock = asyncio.Lock()
+        # For short connection mode: track pending response futures
+        self._pending_responses: dict[str, asyncio.Future[OutboundMessage]] = {}
 
     async def start(self) -> None:
         """Start the NapCat channel.
@@ -103,45 +109,134 @@ class NapCatChannel(BaseChannel):
         logger.info("NapCat channel stopped")
 
     async def send(self, msg: OutboundMessage) -> None:
-        """Send a message through NapCat WebSocket.
+        """Send a message through NapCat.
+
+        Supports multiple modes:
+        1. Long connection: via WebSocket (direct NapCat connection)
+        2. Short connection sync: via Future (request/response pattern)
+        3. MidLayer callback: via HTTP POST to MidLayer (preferred for async mode)
+        4. NapCat HTTP API: direct HTTP API call (fallback)
 
         Args:
             msg: The message to send
         """
-        if not self._ws:
-            logger.warning("NapCat WebSocket not connected")
+        # Check if this is a short connection response (has request_id in metadata)
+        request_id = msg.metadata.get("request_id")
+        if request_id and request_id in self._pending_responses:
+            # Short connection sync mode: set the future result
+            future = self._pending_responses.get(request_id)
+            if future and not future.done():
+                future.set_result(msg)
+                logger.debug(f"Short connection response set for request {request_id[:8]}")
             return
 
+        # Long connection mode: send via WebSocket
+        if self._ws:
+            try:
+                payload = {
+                    "action": "send_private_msg",
+                    "params": {
+                        "user_id": int(msg.chat_id),
+                        "message": msg.content,
+                    },
+                }
+
+                async with self._send_lock:
+                    await self._ws.send(json.dumps(payload))
+
+                logger.debug(f"Message sent via WebSocket to {msg.chat_id}: {msg.content[:50]}")
+                return
+            except Exception as e:
+                logger.error(f"Error sending via WebSocket: {e}")
+                # Fall through to other modes
+
+        # Try MidLayer callback first (preferred for async mode)
+        if self.config.midlayer_callback_url:
+            await self._send_via_midlayer(msg)
+            return
+
+        # Fallback to NapCat HTTP API
+        await self._send_via_http(msg)
+
+    async def _send_via_midlayer(self, msg: OutboundMessage) -> None:
+        """Send message via MidLayer HTTP callback.
+
+        Args:
+            msg: The message to send
+        """
+        callback_url = self.config.midlayer_callback_url
+
         try:
-            # Build OneBot v11 private message request
             payload = {
-                "action": "send_private_msg",
-                "params": {
-                    "user_id": int(msg.chat_id),
-                    "message": msg.content,
-                },
+                "user_id": int(msg.chat_id),
+                "content": msg.content,
+                "metadata": msg.metadata,
             }
 
-            async with self._send_lock:
-                await self._ws.send(json.dumps(payload))
-
-            logger.debug(f"Message sent to {msg.chat_id}: {msg.content[:50]}")
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    callback_url,
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=30)
+                ) as resp:
+                    if resp.status == 200:
+                        result = await resp.json()
+                        if result.get("status") == "ok":
+                            logger.debug(f"Message sent via MidLayer to {msg.chat_id}: {msg.content[:50]}")
+                        else:
+                            logger.warning(f"MidLayer callback error: {result}")
+                    else:
+                        logger.warning(f"MidLayer callback returned {resp.status}")
 
         except Exception as e:
-            logger.error(f"Error sending NapCat message: {e}")
+            logger.error(f"Error sending via MidLayer callback: {e}")
+
+    async def _send_via_http(self, msg: OutboundMessage) -> None:
+        """Send message via NapCat HTTP API (for async mode).
+
+        Args:
+            msg: The message to send
+        """
+        # NapCat HTTP API endpoint (default port 3000)
+        # This should be configured based on your NapCat setup
+        napcat_http_url = self.config.http_api_url or "http://localhost:3000"
+        token = self.config.access_token
+
+        try:
+            payload = {
+                "user_id": int(msg.chat_id),
+                "message": msg.content,
+            }
+
+            headers = {}
+            if token:
+                headers["Authorization"] = f"Bearer {token}"
+
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{napcat_http_url}/send_private_msg",
+                    json=payload,
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=30)
+                ) as resp:
+                    if resp.status == 200:
+                        result = await resp.json()
+                        if result.get("status") == "ok":
+                            logger.debug(f"Message sent via HTTP to {msg.chat_id}: {msg.content[:50]}")
+                        else:
+                            logger.warning(f"NapCat HTTP API error: {result}")
+                    else:
+                        logger.warning(f"NapCat HTTP API returned {resp.status}")
+
+        except Exception as e:
+            logger.error(f"Error sending via NapCat HTTP API: {e}")
 
     async def _handle_connection(self, ws: WebSocketServerProtocol) -> None:
-        """Handle incoming WebSocket connection from NapCat.
+        """Handle incoming WebSocket connection from NapCat (short-lived connection).
 
         Args:
             ws: The WebSocket connection
         """
-        # Check if already connected
-        if self._ws is not None:
-            logger.warning("NapCat already connected, rejecting new connection")
-            await ws.close(1008, "Already connected")
-            return
-
         # Validate access token
         if self.config.access_token:
             # Handle different websockets library versions
@@ -157,26 +252,124 @@ class NapCatChannel(BaseChannel):
                 await ws.close(1008, "Authentication failed")
                 return
 
-        self._ws = ws
-        logger.info("NapCat connected via WebSocket")
+        logger.info("NapCat short connection established")
 
         try:
-            await self._message_loop()
+            await self._handle_short_connection(ws)
         except asyncio.CancelledError:
             raise
         except websockets.exceptions.ConnectionClosed:
-            logger.info("NapCat WebSocket connection closed")
+            pass
         except Exception as e:
             logger.error(f"NapCat WebSocket error: {e}")
         finally:
-            self._ws = None
-            if self._heartbeat_task:
-                self._heartbeat_task.cancel()
-                self._heartbeat_task = None
-            logger.info("NapCat disconnected")
+            logger.info("NapCat short connection closed")
+
+    async def _handle_short_connection(self, ws: WebSocketServerProtocol) -> None:
+        """Handle short-lived WebSocket connection for async processing.
+
+        Args:
+            ws: The WebSocket connection
+        """
+        try:
+            # Receive message
+            message = await ws.recv()
+            logger.debug(f"Received message: {message[:200]}")
+            data = json.loads(message)
+
+            post_type = data.get("post_type")
+            logger.debug(f"Message post_type: {post_type}")
+
+            if post_type == "message":
+                # Async mode: return immediately, process in background
+                # Send acknowledgment
+                ack_response = {
+                    "status": "ok",
+                    "retcode": 0,
+                    "data": {"message_id": data.get("message_id", 0)},
+                    "echo": data.get("echo"),
+                }
+                await ws.send(json.dumps(ack_response))
+
+                # Process message asynchronously (don't wait)
+                asyncio.create_task(self._process_message_async(data))
+
+            elif post_type == "meta_event":
+                # No response needed for meta events in short connection
+                pass
+
+        except json.JSONDecodeError:
+            logger.warning(f"Invalid JSON from NapCat: {message[:100]}")
+        except websockets.exceptions.ConnectionClosed:
+            pass
+        except Exception as e:
+            logger.error(f"Error processing NapCat message: {e}")
+
+    async def _process_message_async(self, data: dict[str, Any]) -> None:
+        """Process message asynchronously (background task).
+
+        Args:
+            data: The message data from NapCat
+        """
+        try:
+            # Extract message info
+            user_id = str(data.get("user_id", ""))
+            message_id = data.get("message_id")
+            message_type = data.get("message_type")
+
+            # Only handle private messages for now
+            if message_type != "private":
+                return
+
+            # Check if already processed (dedup)
+            if message_id in self._processed_ids:
+                return
+            self._processed_ids.append(message_id)
+
+            # Check if sender is allowed
+            if not self.is_allowed(user_id):
+                logger.debug(f"Message from unauthorized user: {user_id}")
+                return
+
+            # Parse message content
+            raw_message = data.get("raw_message", "")
+
+            # Handle array format messages
+            message_array = data.get("message", [])
+            if isinstance(message_array, list):
+                text_parts = []
+                for item in message_array:
+                    if item.get("type") == "text":
+                        text_parts.append(item.get("data", {}).get("text", ""))
+                content = " ".join(text_parts) if text_parts else raw_message
+            else:
+                content = raw_message
+
+            if not content:
+                return
+
+            # Create inbound message
+            msg = InboundMessage(
+                channel=self.name,
+                sender_id=user_id,
+                chat_id=user_id,
+                content=content,
+                metadata={
+                    "message_id": message_id,
+                    "message_type": message_type,
+                    "raw_data": data,
+                },
+            )
+
+            # Publish to bus
+            await self.bus.publish_inbound(msg)
+            logger.info(f"Async message published from {user_id}: {content[:50]}")
+
+        except Exception as e:
+            logger.error(f"Error in async message processing: {e}")
 
     async def _message_loop(self) -> None:
-        """Main message loop for handling WebSocket messages."""
+        """Main message loop for handling WebSocket messages (legacy long connection mode)."""
         if not self._ws:
             return
 
@@ -202,6 +395,14 @@ class NapCatChannel(BaseChannel):
             await self._handle_message_event(data)
         elif post_type == "meta_event":
             await self._handle_meta_event(data)
+            # Send heartbeat response to keep connection alive
+            meta_event_type = data.get("meta_event_type")
+            if meta_event_type == "heartbeat" and self._ws:
+                try:
+                    await self._ws.send("{}")
+                    logger.debug("Sent heartbeat response to NapCat")
+                except Exception as e:
+                    logger.warning(f"Failed to send heartbeat response: {e}")
         elif "status" in data:
             # Response to API call
             if data.get("retcode") != 0:
@@ -209,6 +410,128 @@ class NapCatChannel(BaseChannel):
         else:
             # Other events (notice, request, etc.)
             pass
+
+    async def _process_onebot_message_with_response(
+        self, data: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        """Process message from NapCat and return response (for short connection mode).
+
+        Args:
+            data: The message data from NapCat
+
+        Returns:
+            Response dict or None
+        """
+        post_type = data.get("post_type")
+
+        if post_type == "message":
+            return await self._handle_message_event_with_response(data)
+        elif post_type == "meta_event":
+            # For short connections, no need to respond to heartbeat
+            return None
+        elif "status" in data:
+            if data.get("retcode") != 0:
+                logger.warning(f"NapCat API error: {data}")
+            return None
+        else:
+            return None
+
+    async def _handle_message_event_with_response(
+        self, data: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        """Handle message event and wait for AI response (short connection mode).
+
+        Args:
+            data: The message event data
+
+        Returns:
+            OneBot response dict or None
+        """
+        # Extract message info
+        user_id = str(data.get("user_id", ""))
+        message_id = data.get("message_id")
+        message_type = data.get("message_type")
+
+        # Only handle private messages for now
+        if message_type != "private":
+            return None
+
+        # Check if already processed (dedup)
+        if message_id in self._processed_ids:
+            return None
+        self._processed_ids.append(message_id)
+
+        # Check if sender is allowed
+        if not self.is_allowed(user_id):
+            logger.debug(f"Message from unauthorized user: {user_id}")
+            return None
+
+        # Parse message content
+        raw_message = data.get("raw_message", "")
+
+        # Handle array format messages
+        message_array = data.get("message", [])
+        if isinstance(message_array, list):
+            text_parts = []
+            for item in message_array:
+                if item.get("type") == "text":
+                    text_parts.append(item.get("data", {}).get("text", ""))
+            content = " ".join(text_parts) if text_parts else raw_message
+        else:
+            content = raw_message
+
+        if not content:
+            return None
+
+        # Create unique request ID for tracking response
+        request_id = str(uuid.uuid4())
+
+        # Create future to wait for response
+        response_future: asyncio.Future[OutboundMessage] = asyncio.get_event_loop().create_future()
+        self._pending_responses[request_id] = response_future
+
+        # Create inbound message with request_id in metadata
+        msg = InboundMessage(
+            channel=self.name,
+            sender_id=user_id,
+            chat_id=user_id,
+            content=content,
+            metadata={
+                "message_id": message_id,
+                "message_type": message_type,
+                "raw_data": data,
+                "request_id": request_id,
+            },
+        )
+
+        # Publish to bus
+        await self.bus.publish_inbound(msg)
+        logger.debug(f"Received message from {user_id}: {content[:50]}")
+
+        try:
+            # Wait for response with timeout
+            response_msg = await asyncio.wait_for(response_future, timeout=60.0)
+
+            # Build OneBot response
+            return {
+                "status": "ok",
+                "retcode": 0,
+                "data": {
+                    "message_id": response_msg.metadata.get("message_id", 0),
+                },
+                "echo": data.get("echo"),
+            }
+        except asyncio.TimeoutError:
+            logger.warning(f"Timeout waiting for response to message from {user_id}")
+            return {
+                "status": "failed",
+                "retcode": -1,
+                "msg": "Timeout waiting for AI response",
+                "echo": data.get("echo"),
+            }
+        finally:
+            # Clean up
+            self._pending_responses.pop(request_id, None)
 
     async def _handle_message_event(self, data: dict[str, Any]) -> None:
         """Handle message event from NapCat.

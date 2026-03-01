@@ -159,6 +159,12 @@ class NapCatConfig(BaseModel):
     port: int = 18790  # Port to bind WebSocket server (same as gateway port)
     access_token: str = ""  # Access token for authentication
 
+    # HTTP API configuration (for async mode when WebSocket not available)
+    http_api_url: str = ""  # NapCat HTTP API URL, e.g., "http://localhost:3000"
+
+    # MidLayer callback configuration (for async response mode)
+    midlayer_callback_url: str = ""  # MidLayer HTTP callback URL, e.g., "http://midlayer:18801/callback"
+
     allow_from: list[str] = Field(default_factory=list)  # Allowed QQ numbers (empty = public access)
 
 
@@ -176,13 +182,30 @@ class ChannelsConfig(BaseModel):
     napcat: NapCatConfig = Field(default_factory=NapCatConfig)
 
 
+class NacosConfig(BaseModel):
+    """Nacos service registry configuration."""
+    model_config = ConfigDict(populate_by_name=True)
+
+    enabled: bool = False
+    server_addr: str = Field(default="localhost:8848", alias="serverAddr")
+    namespace: str = ""  # Nacos namespace ID (optional)
+    group: str = "DEFAULT_GROUP"  # Service group
+    service_name: str = Field(default="nanobot-gateway", alias="serviceName")
+    cluster_name: str = Field(default="default", alias="clusterName")
+    weight: float = 1.0  # Service weight for load balancing
+    metadata: dict[str, str] = Field(default_factory=dict)  # Extra metadata
+    heartbeat_interval: int = Field(default=5, alias="heartbeatInterval")
+    username: str = ""  # Nacos username (if auth enabled)
+    password: str = ""  # Nacos password (if auth enabled)
+
+
 class AgentDefaults(BaseModel):
     """Default agent configuration."""
     workspace: str = "~/.nanobot/workspace"
     model: str = "anthropic/claude-opus-4-5"
     max_tokens: int = 8192
     temperature: float = 0.7
-    max_tool_iterations: int = 20
+    max_tool_iterations: int = 40
     memory_window: int = 50
 
 
@@ -250,6 +273,7 @@ class Config(BaseSettings):
     providers: ProvidersConfig = Field(default_factory=ProvidersConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
+    nacos: NacosConfig = Field(default_factory=NacosConfig)
     
     @property
     def workspace_path(self) -> Path:

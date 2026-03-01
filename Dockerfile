@@ -25,9 +25,11 @@ COPY nanobot/ nanobot/
 COPY bridge/ bridge/
 RUN uv pip install --system --no-cache .
 
-# Build the WhatsApp bridge
+# Build the WhatsApp bridge (use taobao registry for faster install in China)
 WORKDIR /app/bridge
-RUN npm install && npm run build
+RUN npm config set registry https://registry.npmmirror.com && \
+    npm install && \
+    npm run build
 WORKDIR /app
 
 # Create config directory

@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  # 服务1: NapCat (QQ客户端)
+  napcat:
+    image: mlikiowa/napcat-docker:latest
+    container_name: napcat
+    restart: always
+    environment:
+      - WEB_UI_ENABLE=true
+      - WEB_UI_PORT=6099
+      # NapCat 反向 WebSocket 连接到 NanoBot
+      - WS_ENABLE=true
+      - WS_URL=ws://nanobot:18790
+    ports:
+      - "6099:6099"   # NapCat 网页后台
+      - "3000:3000"   # OneBot HTTP API 接口
+    volumes:
+      - ./napcat/config:/app/napcat/config
+      - ./napcat/qq:/app/.config/QQ
+    networks:
+      - bot_net
+    depends_on:
+      - nanobot
+
+  # 服务2: NanoBot (AI 机器人)
+  nanobot:
+    image: nanobot:latest
+    container_name: nanobot
+    restart: always
+    # NanoBot 不需要暴露端口到宿主机，只暴露给 NapCat
+    # 如果需要外部访问，可以取消下面的注释
+    # ports:
+    #   - "18790:18790"
+    volumes:
+      - ./nanobot-data:/root/.nanobot
+    networks:
+      - bot_net
+    # 使用 gateway 模式启动，监听 18790 端口
+    command: ["gateway", "--port", "18790"]
+
+networks:
+  bot_net:
+    driver: bridge

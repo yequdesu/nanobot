@@ -19,6 +19,7 @@ from nanobot.agent.tools.message import MessageTool
 from nanobot.agent.tools.spawn import SpawnTool
 from nanobot.agent.tools.cron import CronTool
 from nanobot.agent.tools.show_config import ShowPromptTool, ShowSoulTool, ShowIdentityTool, ShowAgentsTool
+from nanobot.agent.tools.remote_exec import RemoteExecTool
 from nanobot.agent.memory import MemoryStore
 from nanobot.agent.subagent import SubagentManager
 from nanobot.session.manager import SessionManager
@@ -110,7 +111,10 @@ class AgentLoop:
         # Cron tool (for scheduling)
         if self.cron_service:
             self.tools.register(CronTool(self.cron_service))
-        
+
+        # Remote execution tool (for microservices)
+        self.tools.register(RemoteExecTool())
+
         # Config display tools
         self.tools.register(ShowPromptTool(context_builder=self.context))
         self.tools.register(ShowSoulTool(workspace=self.workspace))
@@ -278,11 +282,20 @@ class AgentLoop:
                             tools_used=tools_used if tools_used else None)
         self.sessions.save(session)
         
+        # Build metadata: pass through request_id for short connection mode
+        metadata: dict[str, Any] = {}
+        if msg.metadata:
+            if "request_id" in msg.metadata:
+                metadata["request_id"] = msg.metadata["request_id"]
+            # Also pass through other channel-specific fields like Slack thread_ts
+            if "thread_ts" in msg.metadata:
+                metadata["thread_ts"] = msg.metadata["thread_ts"]
+
         return OutboundMessage(
             channel=msg.channel,
             chat_id=msg.chat_id,
             content=final_content,
-            metadata=msg.metadata or {},  # Pass through for channel-specific needs (e.g. Slack thread_ts)
+            metadata=metadata,
         )
     
     async def _process_system_message(self, msg: InboundMessage) -> OutboundMessage | None:

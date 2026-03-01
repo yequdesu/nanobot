@@ -118,7 +118,8 @@
       "host": "0.0.0.0",
       "port": 18790,
       "accessToken": "",
-      "allowFrom": []
+      "allowFrom": [],
+      "midlayerCallbackUrl": "http://host.docker.internal:18801/callback"
     }
   },
   "providers": {
@@ -198,5 +199,18 @@
       "timeout": 60
     },
     "restrictToWorkspace": false
+  },
+  "nacos": {
+    "enabled": true,
+    "serverAddr": "8.152.198.61:8848",
+    "namespace": "5843c114-2ed2-4956-b7cd-07debfd67554",
+    "group": "DEFAULT_GROUP",
+    "serviceName": "nanobot-gateway",
+    "clusterName": "default",
+    "weight": 1.0,
+    "metadata": {},
+    "heartbeatInterval": 5,
+    "username": "nacos",
+    "password": "nacos"
   }
 }
