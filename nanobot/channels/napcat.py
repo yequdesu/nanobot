@@ -406,14 +406,8 @@ class NapCatChannel(BaseChannel):
             await self._handle_message_event(data)
         elif post_type == "meta_event":
             await self._handle_meta_event(data)
-            # Send heartbeat response to keep connection alive
-            meta_event_type = data.get("meta_event_type")
-            if meta_event_type == "heartbeat" and self._ws:
-                try:
-                    await self._ws.send("{}")
-                    logger.debug("Sent heartbeat response to NapCat")
-                except Exception as e:
-                    logger.warning(f"Failed to send heartbeat response: {e}")
+            # Note: OneBot v11 heartbeat events don't require a response
+            # NapCat sends heartbeat to maintain the connection
         elif "status" in data:
             # Response to API call
             if data.get("retcode") != 0:
