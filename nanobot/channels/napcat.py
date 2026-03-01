@@ -232,11 +232,17 @@ class NapCatChannel(BaseChannel):
             logger.error(f"Error sending via NapCat HTTP API: {e}")
 
     async def _handle_connection(self, ws: WebSocketServerProtocol) -> None:
-        """Handle incoming WebSocket connection from NapCat (short-lived connection).
+        """Handle incoming WebSocket connection from NapCat (long-lived connection).
 
         Args:
             ws: The WebSocket connection
         """
+        # Check if already connected
+        if self._ws is not None:
+            logger.warning("NapCat already connected, rejecting new connection")
+            await ws.close(1008, "Already connected")
+            return
+
         # Validate access token
         if self.config.access_token:
             # Handle different websockets library versions
@@ -252,18 +258,23 @@ class NapCatChannel(BaseChannel):
                 await ws.close(1008, "Authentication failed")
                 return
 
-        logger.info("NapCat short connection established")
+        self._ws = ws
+        logger.info("NapCat connected via WebSocket")
 
         try:
-            await self._handle_short_connection(ws)
+            await self._message_loop()
         except asyncio.CancelledError:
             raise
         except websockets.exceptions.ConnectionClosed:
-            pass
+            logger.info("NapCat WebSocket connection closed")
         except Exception as e:
             logger.error(f"NapCat WebSocket error: {e}")
         finally:
-            logger.info("NapCat short connection closed")
+            self._ws = None
+            if self._heartbeat_task:
+                self._heartbeat_task.cancel()
+                self._heartbeat_task = None
+            logger.info("NapCat disconnected")
 
     async def _handle_short_connection(self, ws: WebSocketServerProtocol) -> None:
         """Handle short-lived WebSocket connection for async processing.
