@@ -133,11 +133,14 @@ class NapCatChannel(BaseChannel):
         # Long connection mode: send via WebSocket
         if self._ws:
             try:
+                # Build message content (text + images)
+                message_content = self._build_message_content(msg)
+                
                 payload = {
                     "action": "send_private_msg",
                     "params": {
                         "user_id": int(msg.chat_id),
-                        "message": msg.content,
+                        "message": message_content,
                     },
                 }
 
@@ -203,9 +206,12 @@ class NapCatChannel(BaseChannel):
         token = self.config.access_token
 
         try:
+            # Build message content (text + images)
+            message_content = self._build_message_content(msg)
+            
             payload = {
                 "user_id": int(msg.chat_id),
-                "message": msg.content,
+                "message": message_content,
             }
 
             headers = {}
@@ -230,6 +236,69 @@ class NapCatChannel(BaseChannel):
 
         except Exception as e:
             logger.error(f"Error sending via NapCat HTTP API: {e}")
+
+    def _build_message_content(self, msg: OutboundMessage) -> str | list[dict]:
+        """Build OneBot message content from text and media.
+        
+        OneBot v11 supports two message formats:
+        1. String format: simple text
+        2. Array format: list of message segments (text, image, etc.)
+        
+        Args:
+            msg: The outbound message with content and optional media
+            
+        Returns:
+            String for text-only messages, or array for messages with media
+        """
+        # If no media, return simple text
+        if not msg.media:
+            return msg.content
+        
+        # Build message array for mixed content
+        message_array = []
+        
+        # Add text content if present
+        if msg.content:
+            message_array.append({
+                "type": "text",
+                "data": {"text": msg.content}
+            })
+        
+        # Add images
+        for media_path in msg.media:
+            # Support both URLs and local file paths
+            if media_path.startswith("http://") or media_path.startswith("https://"):
+                # URL-based image
+                message_array.append({
+                    "type": "image",
+                    "data": {"file": media_path}
+                })
+            elif media_path.startswith("base64://"):
+                # Base64-encoded image
+                message_array.append({
+                    "type": "image",
+                    "data": {"file": media_path}
+                })
+            else:
+                # Local file path - convert to base64 or file URL
+                # For now, use file:// protocol
+                import os
+                if os.path.exists(media_path):
+                    # Try to read and encode as base64
+                    try:
+                        with open(media_path, "rb") as f:
+                            import base64
+                            image_data = base64.b64encode(f.read()).decode()
+                            message_array.append({
+                                "type": "image",
+                                "data": {"file": f"base64://{image_data}"}
+                            })
+                    except Exception as e:
+                        logger.warning(f"Failed to encode image {media_path}: {e}")
+                else:
+                    logger.warning(f"Image file not found: {media_path}")
+        
+        return message_array
 
     async def _handle_connection(self, ws: WebSocketServerProtocol) -> None:
         """Handle incoming WebSocket connection from NapCat (long-lived connection).

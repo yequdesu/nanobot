@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,39 @@ from nanobot.agent.tools.remote_exec import RemoteExecTool
 from nanobot.agent.memory import MemoryStore
 from nanobot.agent.subagent import SubagentManager
 from nanobot.session.manager import SessionManager
+
+
+def extract_final_answer(content: str) -> str:
+    """Extract the final answer from the response.
+    
+    The response format should be:
+    <思考过程>
+    ...thinking process...
+    </思考过程>
+    
+    <最终答案>
+    ...final answer in Chinese...
+    </最终答案>
+    
+    If the format is not found, return the original content.
+    
+    Args:
+        content: The raw response from the LLM
+        
+    Returns:
+        The extracted final answer or original content
+    """
+    # Try to find <最终答案> section
+    pattern = r'<最终答案>\s*\n?(.*?)\n?\s*</最终答案>'
+    match = re.search(pattern, content, re.DOTALL)
+    
+    if match:
+        final_answer = match.group(1).strip()
+        if final_answer:
+            return final_answer
+    
+    # Fallback: return original content if format not found
+    return content
 
 
 class AgentLoop:
@@ -272,6 +306,9 @@ class AgentLoop:
             else:
                 final_content = "I've completed processing but have no response to give."
         
+        # Extract final answer from the response (separate thinking from answer)
+        final_content = extract_final_answer(final_content)
+        
         # Log response preview
         preview = final_content[:120] + "..." if len(final_content) > 120 else final_content
         logger.info(f"Response to {msg.channel}:{msg.sender_id}: {preview}")
@@ -387,6 +424,9 @@ class AgentLoop:
         
         if final_content is None:
             final_content = "Background task completed."
+        
+        # Extract final answer from the response
+        final_content = extract_final_answer(final_content)
         
         # Save to session (mark as system message in history)
         session.add_message("user", f"[System: {msg.sender_id}] {msg.content}")
