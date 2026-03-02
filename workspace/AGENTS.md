@@ -35,9 +35,26 @@ You have access to:
 - File operations (read, write, edit, list)
 - Shell commands (exec)
 - Web access (search, fetch)
-- Messaging (message)
+- Messaging (message) - supports text and images
 - Background tasks (spawn)
 - Configuration display (show_prompt, show_soul, show_identity, show_agents)
+
+### Sending Images
+
+To send images to users, use the `message` tool with the `media` parameter:
+
+```json
+{
+  "content": "Here is the image:",
+  "media": ["/path/to/image.png", "https://example.com/image.jpg"]
+}
+```
+
+Supported image formats:
+- Local file paths (e.g., `/tmp/image.png`)
+- HTTP/HTTPS URLs (e.g., `https://example.com/image.jpg`)
+
+**Important**: When the user asks for an image, generate it first using tools (e.g., Python PIL), save it to a file, then use the `message` tool with the `media` parameter to send it. Do NOT just return base64 strings in text.
 
 ## Memory
 
